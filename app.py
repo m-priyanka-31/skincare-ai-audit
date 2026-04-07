@@ -4,8 +4,9 @@ import streamlit as st
 def analyze_review(text):
     text = text.lower()
     emergency = ['stuck', 'doctor', 'emergency', 'blind', 'scared', 'pain']
-    medical = ['eczema', 'rash', 'burn', 'swollen', 'itchy', 'break out', 'redness', 'stings']
-    education = ['how to', 'confused', 'order', 'step', 'every day']
+    # Updated Lists for your app.py
+medical = ['eczema', 'rash', 'burn', 'swollen', 'itchy', 'break out', 'redness', 'stings', 'stripped', 'irritated']
+quality = ['pump', 'broken', 'leaked', 'empty', 'smell', 'texture', 'watery', 'harsh', 'dryness']
 
     if any(word in text for word in emergency): return "🆘 EMERGENCY: Legal/Safety Risk"
     elif any(word in text for word in medical): return "🚨 MEDICAL: Adverse Reaction"
