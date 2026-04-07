@@ -1,55 +1,55 @@
 import streamlit as st
+import pandas as pd
 
 # --- THE ENGINE ---
 def analyze_review(text):
-    text = text.lower()
-    # Corrected Lists to include "Stripped" and "Harsh"
+    text = str(text).lower()
     emergency = ['stuck', 'doctor', 'emergency', 'blind', 'scared', 'pain']
     medical = ['eczema', 'rash', 'burn', 'swollen', 'itchy', 'break out', 'redness', 'stings', 'stripped', 'irritated']
     education = ['how to', 'confused', 'order', 'step', 'every day']
     quality = ['pump', 'broken', 'leaked', 'empty', 'smell', 'texture', 'watery', 'harsh', 'dryness']
 
-    # CRITICAL: Ensure these 4 lines below have EXACTLY 4 spaces of indentation
-    if any(word in text for word in emergency): 
-        return "🆘 EMERGENCY: Legal/Safety Risk"
-    elif any(word in text for word in medical): 
-        return "🚨 MEDICAL: Adverse Reaction"
-    elif any(word in text for word in education): 
-        return "📘 EDUCATION: Usage Confusion"
-    elif any(word in text for word in quality):
-        return "⚠️ QUALITY: Formula/Packaging Issue"
-    else: 
-        return "✅ ROUTINE: Brand Engagement"
+    if any(word in text for word in emergency): return "🆘 EMERGENCY"
+    elif any(word in text for word in medical): return "🚨 MEDICAL"
+    elif any(word in text for word in education): return "📘 EDUCATION"
+    elif any(word in text for word in quality): return "⚠️ QUALITY"
+    else: return "✅ ROUTINE"
 
 # --- THE USER INTERFACE ---
-st.set_page_config(page_title="Skincare Risk Audit AI", page_icon="🧪")
-st.title("🧪 Skincare Sentiment & Risk Engine")
-st.markdown("### Professional Audit Tool for High-Growth Brands")
+st.set_page_config(page_title="Skincare Risk Audit Pro", layout="wide")
+st.title("🧪 Skincare Risk Audit: Enterprise Edition")
 
-# Input Section
-user_input = st.text_area("Paste a Customer Review here to Audit:", 
-                          placeholder="e.g., My eyes are swollen and burning after using the serum...")
+# --- SIDEBAR: SINGLE REVIEW ---
+st.sidebar.header("Single Review Audit")
+single_input = st.sidebar.text_area("Paste one review:")
+if st.sidebar.button("Audit Single"):
+    st.sidebar.write(f"Result: **{analyze_review(single_input)}**")
 
-if st.button("Run Audit"):
-    if user_input:
-        result = analyze_review(user_input)
+# --- MAIN: BULK UPLOAD ---
+st.header("Bulk Data Analysis")
+st.write("Upload a CSV file of customer reviews to generate a Brand Risk Report.")
+
+uploaded_file = st.file_uploader("Choose a CSV file (Column name should be 'review')", type="csv")
+
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
+    
+    if 'review' in df.columns:
+        # Run the AI on every row
+        df['Risk Level'] = df['review'].apply(analyze_review)
         
-        # Visual Feedback
-        if "EMERGENCY" in result:
-            st.error(result)
-            st.warning("Action Required: Alert Legal and Product Safety Teams immediately.")
-        elif "MEDICAL" in result:
-            st.error(result)
-        elif "EDUCATION" in result:
-            st.info(result)
-        elif "QUALITY" in result:
-            st.warning(result)
-        else:
-            st.success(result)
-            
-        st.write(f"**Analysis for:** '{user_input[:50]}...'")
-    else:
-        st.write("Please enter a review to analyze.")
+        # Display Stats
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Reviews", len(df))
+        col2.metric("High Risk (Emergency/Medical)", len(df[df['Risk Level'].str.contains('🆘|🚨')]))
+        col3.metric("Retention Risk (Quality)", len(df[df['Risk Level'] == '⚠️ QUALITY']))
 
-st.sidebar.markdown("### Brand Portfolio: The INKEY List")
-st.sidebar.write("Currently Monitoring: Multi-Peptide Eye Serum")
+        # Show the Data Table
+        st.subheader("Audit Results")
+        st.dataframe(df, use_container_width=True)
+        
+        # Download Button for the Brand
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("Download Full Audit Report", csv, "brand_audit.csv", "text/csv")
+    else:
+        st.error("Error: Please make sure your CSV has a column named 'review'.")
