@@ -3,15 +3,23 @@ import streamlit as st
 # --- THE ENGINE ---
 def analyze_review(text):
     text = text.lower()
+    # Corrected Lists to include "Stripped" and "Harsh"
     emergency = ['stuck', 'doctor', 'emergency', 'blind', 'scared', 'pain']
-    # Updated Lists for your app.py
-medical = ['eczema', 'rash', 'burn', 'swollen', 'itchy', 'break out', 'redness', 'stings', 'stripped', 'irritated']
-quality = ['pump', 'broken', 'leaked', 'empty', 'smell', 'texture', 'watery', 'harsh', 'dryness']
+    medical = ['eczema', 'rash', 'burn', 'swollen', 'itchy', 'break out', 'redness', 'stings', 'stripped', 'irritated']
+    education = ['how to', 'confused', 'order', 'step', 'every day']
+    quality = ['pump', 'broken', 'leaked', 'empty', 'smell', 'texture', 'watery', 'harsh', 'dryness']
 
-    if any(word in text for word in emergency): return "🆘 EMERGENCY: Legal/Safety Risk"
-    elif any(word in text for word in medical): return "🚨 MEDICAL: Adverse Reaction"
-    elif any(word in text for word in education): return "📘 EDUCATION: Usage Confusion"
-    else: return "✅ ROUTINE: Brand Engagement"
+    # CRITICAL: Ensure these 4 lines below have EXACTLY 4 spaces of indentation
+    if any(word in text for word in emergency): 
+        return "🆘 EMERGENCY: Legal/Safety Risk"
+    elif any(word in text for word in medical): 
+        return "🚨 MEDICAL: Adverse Reaction"
+    elif any(word in text for word in education): 
+        return "📘 EDUCATION: Usage Confusion"
+    elif any(word in text for word in quality):
+        return "⚠️ QUALITY: Formula/Packaging Issue"
+    else: 
+        return "✅ ROUTINE: Brand Engagement"
 
 # --- THE USER INTERFACE ---
 st.set_page_config(page_title="Skincare Risk Audit AI", page_icon="🧪")
@@ -34,6 +42,8 @@ if st.button("Run Audit"):
             st.error(result)
         elif "EDUCATION" in result:
             st.info(result)
+        elif "QUALITY" in result:
+            st.warning(result)
         else:
             st.success(result)
             
