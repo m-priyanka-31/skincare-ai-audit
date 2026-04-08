@@ -13,11 +13,11 @@ def analyze_review(text):
     ]
     
     # Level 2: Adverse Reaction (Symptoms)
-   medical = [
+    medical = [
     'eczema', 'rash', 'burn', 'swollen', 'itchy', 'break out', 
     'redness', 'stings', 'stripped', 'irritated', 'puffy', 
     'rötungen', 'brennen', 'rougeur', 'quemadura' # Adding German/French/Spanish
-]
+   ]
     
     # Level 3: Education Gaps (Usage Confusion)
     education = [
