@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import re
 
 # --- THE UPDATED RISK ENGINE ---
 def analyze_review(text):
@@ -18,7 +17,7 @@ def analyze_review(text):
     ]
     
     # 2. MEDICAL (Symptoms) - Global Lexicon
-    # ADDED: 'stinging', 'stings' to catch physical reactions
+    # Logic Fix: Added 'stinging' and 'stings' to prioritize physical sensation
     medical = [
         'burn', 'red', 'puffy', 'rash', 'swollen', 'break out', 'hot', 'itchy',
         'stings', 'stinging', 'irritation', 'irritate', 'allergy', 'peeling', 'blisters',
@@ -48,40 +47,87 @@ def analyze_review(text):
     has_quality = any(word in text_clean for word in quality)
 
     # --- HIERARCHICAL LOGIC (Priority Order) ---
-    
-    # Priority 1: Direct Emergency/Legal Risk
     if has_emergency: 
         return "🆘 EMERGENCY: High Legal Risk"
-    
-    # Priority 2: THE FIX - Masked Adverse Reaction (Glow + Symptom)
-    # This will now catch "Gives a great glow, but my face is stinging"
     elif has_mask and has_medical:
         return "🔴 CRITICAL: Masked Adverse Reaction"
-        
-    # Priority 3: Direct Medical Signal
     elif has_medical: 
         return "🚨 MEDICAL: Adverse Reaction"
-    
-    # Priority 4: Education Gaps
     elif has_education: 
         return "📘 EDUCATION: Usage Confusion"
-    
-    # Priority 5: Quality/Retention Issues
     elif has_quality:
         return "⚠️ QUALITY: Retention Risk"
-    
-    # Priority 6: Standard Feedback
     else: 
         return "✅ ROUTINE: Brand Engagement"
 
 # --- STREAMLIT USER INTERFACE ---
 st.set_page_config(page_title="Skincare Risk Audit Pro", layout="wide", page_icon="🧪")
 
+# 1. HEADER
 st.title("🧪 Skincare Risk Audit: Enterprise Edition")
 st.markdown("### Automated Safety & Global Compliance Monitoring")
 st.divider()
 
-# --- SIDEBAR: REAL-TIME TESTING ---
+# 2. MAIN AREA: BULK BRAND AUDIT (This is the section you were looking for!)
+st.header("📊 Bulk Brand Audit")
+st.write("Upload your global review dataset (CSV or Excel) to run the Risk Engine.")
+
+# THE UPLOADER
+uploaded_file = st.file_uploader("Drop files here", type=["csv", "xlsx"])
+
+if uploaded_file is not None:
+    try:
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+        
+        if 'review' in df.columns:
+            # Apply the engine
+            df['Audit Result'] = df['review'].apply(analyze_review)
+            
+            # --- DASHBOARD METRICS ---
+            st.subheader("Executive Overview")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Total Reviews", len(df))
+            
+            critical_count = len(df[df['Audit Result'].str.contains('🆘|🔴|🚨')])
+            m2.metric("Safety/Legal Risks", critical_count, delta_color="inverse")
+            
+            edu_count = len(df[df['Audit Result'].str.contains('📘')])
+            m3.metric("Education Gaps", edu_count)
+            
+            quality_count = len(df[df['Audit Result'].str.contains('⚠️')])
+            m4.metric("Quality Flags", quality_count)
+
+            # --- VISUALIZATION ---
+            st.divider()
+            col_chart, col_data = st.columns([1, 2])
+            
+            with col_chart:
+                st.write("### Risk Distribution")
+                counts = df['Audit Result'].value_counts()
+                st.bar_chart(counts, color="#FF4B4B")
+
+            with col_data:
+                st.write("### Priority Log")
+                st.dataframe(df.sort_values(by='Audit Result'), use_container_width=True)
+            
+            # --- EXPORT ---
+            st.divider()
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Executive Audit Report",
+                data=csv,
+                file_name='Global_Risk_Audit_Report.csv',
+                mime='text/csv'
+            )
+        else:
+            st.error("Error: The uploaded file must contain a column named 'review'.")
+    except Exception as e:
+        st.error(f"Error processing file: {e}")
+
+# 3. SIDEBAR: REAL-TIME SANDBOX TESTING
 st.sidebar.header("🔬 Sandbox Testing")
 st.sidebar.write("Test specific phrases for 'The Glowing Bias' here.")
 single_input = st.sidebar.text_area("Review Text:", placeholder="e.g., My face is glowing but it feels hot and itchy.")
@@ -95,5 +141,3 @@ if st.sidebar.button("Analyze Logic"):
             st.sidebar.warning(f"Analysis: {result}")
         else:
             st.sidebar.success(f"Analysis: {result}")
-
-# ... (rest of the bulk audit code remains the same)
