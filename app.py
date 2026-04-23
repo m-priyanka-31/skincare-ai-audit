@@ -7,10 +7,10 @@ def analyze_review(text):
     text_clean = str(text).lower()
     
         # 0. THE CONTEXTUAL MASK (Keywords that trick standard AI)
-        masking_keywords = ['glow', 'glowing', 'radiant','radiante', 'luminosa','shimmer', 'bright', 'glass skin', 'radiance']
+     masking_keywords = ['glow', 'glowing', 'radiant','radiante', 'luminosa','shimmer', 'bright', 'glass skin', 'radiance']
         
         # 1. EMERGENCY (Safety/Legal) - Global Lexicon
-        emergency = [
+     emergency = [
             'doctor', 'hospital', 'emergency', 'pain', 'allergic reaction',
             'emergencia', 'dolor', 'reacción alérgica',
             'medico', 'ospedale', 'pronto soccorso', 'reazione allergica'
