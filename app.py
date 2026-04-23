@@ -6,24 +6,25 @@ def analyze_review(text):
     # Ensure text is a string and lowercase for consistent matching
     text_clean = str(text).lower()
     
-    # 0. THE CONTEXTUAL MASK (Keywords that trick standard AI)
-    masking_keywords = ['glow', 'glowing', 'radiant','radiante', 'luminosa','shimmer', 'bright', 'glass skin', 'radiance']
-    
-    # 1. EMERGENCY (Safety/Legal) - Global Lexicon
-    emergency = [
-        'doctor', 'hospital', 'emergency', 'pain', 'allergic reaction',
-        'emergencia', 'dolor', 'reacción alérgica',
-        'medico', 'ospedale', 'pronto soccorso', 'reazione allergica'
-    ]
-    
-    # 2. MEDICAL (Symptoms) - Global Lexicon
-    # Logic Fix: Added 'stinging' and 'stings' to prioritize physical sensation
+        # 0. THE CONTEXTUAL MASK (Keywords that trick standard AI)
+        masking_keywords = ['glow', 'glowing', 'radiant','radiante', 'luminosa','shimmer', 'bright', 'glass skin', 'radiance']
+        
+        # 1. EMERGENCY (Safety/Legal) - Global Lexicon
+        emergency = [
+            'doctor', 'hospital', 'emergency', 'pain', 'allergic reaction',
+            'emergencia', 'dolor', 'reacción alérgica',
+            'medico', 'ospedale', 'pronto soccorso', 'reazione allergica'
+        ]
+        
+        # 2. MEDICAL (Symptoms) - Global Lexicon
+        # Logic Fix: Added 'stinging' and 'stings' to prioritize physical sensation
     medical = [
-        'burn', 'red', 'puffy', 'rash', 'swollen', 'break out', 'hot', 'itchy',
-        'stings', 'stinging', 'irritation', 'irritate', 'allergy', 'peeling', 'blisters',
-        'quemadura', 'rojo', 'hinchado', 'irritación', 'alergia', 'ardor', 'picazón',
-        'brucia', 'rossore', 'gonfio', 'irritazione', 'brufoli', 'prurito'
-    ]
+            'burn', 'red', 'puffy', 'rash', 'swollen', 'break out', 'hot', 'itchy',
+            'stings', 'stinging', 'irritation', 'irritate', 'allergy', 'peeling', 'blisters',
+            'bumps', 'pimple', 'breakout', # <--- ADD THESE THREE HERE
+            'quemadura', 'rojo', 'hinchado', 'irritación', 'alergia', 'ardor', 'picazón',
+            'brucia', 'rossore', 'gonfio', 'irritazione', 'brufoli', 'prurito'
+        ]
     
     # 3. EDUCATION (Usage Confusion)
     education = [
