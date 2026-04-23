@@ -6,25 +6,27 @@ def analyze_review(text):
     # Ensure text is a string and lowercase for consistent matching
     text_clean = str(text).lower()
     
-        # 0. THE CONTEXTUAL MASK (Keywords that trick standard AI)
-     masking_keywords = ['glow', 'glowing', 'radiant','radiante', 'luminosa','shimmer', 'bright', 'glass skin', 'radiance']
+    # 0. THE CONTEXTUAL MASK (Keywords that trick standard AI)
+    masking_keywords = [
+        'glow', 'glowing', 'radiant', 'radiante', 'luminosa', 
+        'shimmer', 'bright', 'glass skin', 'radiance', 'amazing', 'love'
+    ]
         
-        # 1. EMERGENCY (Safety/Legal) - Global Lexicon
-     emergency = [
-            'doctor', 'hospital', 'emergency', 'pain', 'allergic reaction',
-            'emergencia', 'dolor', 'reacción alérgica',
-            'medico', 'ospedale', 'pronto soccorso', 'reazione allergica'
-        ]
+    # 1. EMERGENCY (Safety/Legal) - Global Lexicon
+    emergency = [
+        'doctor', 'hospital', 'emergency', 'pain', 'allergic reaction',
+        'emergencia', 'dolor', 'reacción alérgica',
+        'medico', 'ospedale', 'pronto soccorso', 'reazione allergica'
+    ]
         
-        # 2. MEDICAL (Symptoms) - Global Lexicon
-        # Logic Fix: Added 'stinging' and 'stings' to prioritize physical sensation
+    # 2. MEDICAL (Symptoms) - Global Lexicon
     medical = [
-            'burn', 'red', 'puffy', 'rash', 'swollen', 'break out', 'hot', 'itchy',
-            'stings', 'stinging', 'irritation', 'irritate', 'allergy', 'peeling', 'blisters',
-            'bumps', 'pimple', 'breakout', # <--- ADD THESE THREE HERE
-            'quemadura', 'rojo', 'hinchado', 'irritación', 'alergia', 'ardor', 'picazón',
-            'brucia', 'rossore', 'gonfio', 'irritazione', 'brufoli', 'prurito'
-        ]
+        'burn', 'red', 'puffy', 'rash', 'swollen', 'break out', 'hot', 'itchy',
+        'stings', 'stinging', 'irritation', 'irritate', 'allergy', 'peeling', 'blisters',
+        'bumps', 'pimple', 'breakout', 'stings', 'stinging',
+        'quemadura', 'rojo', 'hinchado', 'irritación', 'alergia', 'ardor', 'picazón',
+        'brucia', 'rossore', 'gonfio', 'irritazione', 'brufoli', 'prurito'
+    ]
     
     # 3. EDUCATION (Usage Confusion)
     education = [
@@ -69,7 +71,7 @@ st.title("🧪 Skincare Risk Audit: Enterprise Edition")
 st.markdown("### Automated Safety & Global Compliance Monitoring")
 st.divider()
 
-# 2. MAIN AREA: BULK BRAND AUDIT (This is the section you were looking for!)
+# 2. MAIN AREA: BULK BRAND AUDIT
 st.header("📊 Bulk Brand Audit")
 st.write("Upload your global review dataset (CSV or Excel) to run the Risk Engine.")
 
@@ -83,6 +85,9 @@ if uploaded_file is not None:
         else:
             df = pd.read_excel(uploaded_file)
         
+        # Standardizing column name to lowercase for checking
+        df.columns = [c.lower() for c in df.columns]
+
         if 'review' in df.columns:
             # Apply the engine
             df['Audit Result'] = df['review'].apply(analyze_review)
@@ -93,7 +98,7 @@ if uploaded_file is not None:
             m1.metric("Total Reviews", len(df))
             
             critical_count = len(df[df['Audit Result'].str.contains('🆘|🔴|🚨')])
-            m2.metric("Safety/Legal Risks", critical_count, delta_color="inverse")
+            m2.metric("Safety/Legal Risks", critical_count)
             
             edu_count = len(df[df['Audit Result'].str.contains('📘')])
             m3.metric("Education Gaps", edu_count)
@@ -112,7 +117,8 @@ if uploaded_file is not None:
 
             with col_data:
                 st.write("### Priority Log")
-                st.dataframe(df.sort_values(by='Audit Result'), use_container_width=True)
+                # Styling the dataframe for better visibility
+                st.dataframe(df.sort_values(by='Audit Result', ascending=False), use_container_width=True)
             
             # --- EXPORT ---
             st.divider()
@@ -140,5 +146,7 @@ if st.sidebar.button("Analyze Logic"):
             st.sidebar.error(f"Analysis: {result}")
         elif "🚨" in result:
             st.sidebar.warning(f"Analysis: {result}")
-        else:
+        elif "✅" in result:
             st.sidebar.success(f"Analysis: {result}")
+        else:
+            st.sidebar.info(f"Analysis: {result}")
