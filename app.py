@@ -37,7 +37,8 @@ def analyze_review(text):
     
     # 4. QUALITY (Product/Packaging)
     quality = [
-        'broken', 'leaked', 'empty', 'smell', 'texture', 'harsh', 'amount',
+        'broken', 'leaked', 'leaking', 'leak', 'leaks', 'empty', 
+        'smell', 'texture', 'harsh', 'amount', 'packaging',
         'roto', 'vacío', 'olor', 'textura', 'cantidad',
         'rotto', 'vuoto', 'odore', 'poca'
     ]
