@@ -30,34 +30,59 @@ TIER_3_MEDIUM = [
 
 PRAISE_KEYWORDS = ["glow", "effective", "good", "nice", "love", "radiant", "awesome", "best"]
 
+# Words that negate a medical issue if placed directly in front of it
+NEGATION_WORDS = ["no ", "zero ", "never ", "without ", "didn't ", "did not ", "free of ", "don't have "]
+
 # =====================================================================
-# ENGINE LOGIC
+# ENGINE LOGIC WITH NEGATION HANDLING
 # =====================================================================
 def analyze_review_safety(review_text, rating):
     text_lower = review_text.lower()
     assigned_risk = "LOW"
     triggered_flag = None
     
+    # --- TIER 1 SEARCH ---
     for word in TIER_1_CRITICAL:
         if word in text_lower:
+            # Negation validation check
+            keyword_idx = text_lower.find(word)
+            lookback_str = text_lower[max(0, keyword_idx - 20):keyword_idx]
+            if any(neg in lookback_str for neg in NEGATION_WORDS):
+                continue # Skip keyword, it's negated (e.g., "without stinging")
+                
             assigned_risk = "CRITICAL"
             triggered_flag = word
             break
             
+    # --- TIER 2 SEARCH ---
     if assigned_risk == "LOW":
         for word in TIER_2_HIGH:
             if word in text_lower:
+                # Negation validation check
+                keyword_idx = text_lower.find(word)
+                lookback_str = text_lower[max(0, keyword_idx - 20):keyword_idx]
+                if any(neg in lookback_str for neg in NEGATION_WORDS):
+                    continue
+                    
                 assigned_risk = "HIGH"
                 triggered_flag = word
                 break
                 
+    # --- TIER 3 SEARCH ---
     if assigned_risk == "LOW":
         for word in TIER_3_MEDIUM:
             if word in text_lower:
+                # Negation validation check
+                keyword_idx = text_lower.find(word)
+                lookback_str = text_lower[max(0, keyword_idx - 20):keyword_idx]
+                if any(neg in lookback_str for neg in NEGATION_WORDS):
+                    continue
+                    
                 assigned_risk = "MEDIUM"
                 triggered_flag = word
                 break
 
+    # Calculate Masked Risks
     has_praise = any(praise_word in text_lower for praise_word in PRAISE_KEYWORDS)
     is_high_rating = int(rating) >= 4 if str(rating).isdigit() else False
     
