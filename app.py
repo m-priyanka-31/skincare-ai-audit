@@ -1,153 +1,168 @@
-import streamlit as st
-import pandas as pd
+import csv
+import json
 
-# --- THE UPDATED RISK ENGINE ---
-def analyze_review(text):
-    # Ensure text is a string and lowercase for consistent matching
-    text_clean = str(text).lower()
+# =====================================================================
+# DETERMINISTIC CLINICAL LEXICON (TIERED BY SEVERITY)
+# =====================================================================
+
+TIER_1_CRITICAL = [
+    "stinging", "burning", "burns", "chemical burn", "raw skin", "peeling skin",
+    "bleeding", "blisters", "oozing", "pus", "swelling", "inflammation", 
+    "edema", "erythema", "crusting", "scabbing", "skin peel", "damaged barrier", 
+    "sensitized", "painful", "hurts", "throbbing", "tender to touch"
+]
+
+TIER_2_HIGH = [
+    "rash", "hives", "welts", "allergic", "allergy", "contact dermatitis", 
+    "itching", "itchy", "red spots", "bumps", "swelled up", "breakout", 
+    "swollen eyes", "dermatitis", "irritated", "irritation"
+]
+
+TIER_3_MEDIUM = [
+    "cystic acne", "nodules", "painful bumps", "pus pimples", "clogged pores", 
+    "blackheads", "whiteheads", "severe breakout", "ruined my face", "scarring", 
+    "marks", "hyperpigmentation", "dark spots"
+]
+
+# High-frequency praise terms that typically skew standard NLP tools
+PRAISE_KEYWORDS = ["glow", "effective", "good", "nice", "love", "radiant", "awesome", "best"]
+
+# =====================================================================
+# CORE HIERARCHICAL RISK ENGINE LOGIC
+# =====================================================================
+
+def analyze_review_safety(review_text, rating):
+    """
+    Parses a review string using a deterministic hierarchical priority override.
+    Detects if marketing praise is masking an underlying physiological safety risk.
+    """
+    text_lower = review_text.lower()
     
-    # 0. THE CONTEXTUAL MASK (Keywords that trick standard AI)
-    masking_keywords = [
-        'glow', 'glowing', 'radiant', 'radiante', 'luminosa', 
-        'shimmer', 'bright', 'glass skin', 'radiance', 'amazing', 'love'
-    ]
-        
-    # 1. EMERGENCY (Safety/Legal) - Global Lexicon
-    emergency = [
-        'doctor', 'hospital', 'emergency', 'pain', 'allergic reaction',
-        'emergencia', 'dolor', 'reacción alérgica',
-        'medico', 'ospedale', 'pronto soccorso', 'reazione allergica'
-    ]
-        
-    # 2. MEDICAL (Symptoms) - Global Lexicon
-    medical = [
-        'burn', 'red', 'puffy', 'rash', 'swollen', 'break out', 'hot', 'itchy',
-        'stings', 'stinging', 'irritation', 'irritate', 'allergy', 'peeling', 'blisters',
-        'bumps', 'pimple', 'breakout', 'stings', 'stinging',
-        'quemadura', 'rojo', 'hinchado', 'irritación', 'alergia', 'ardor', 'picazón',
-        'brucia', 'rossore', 'gonfio', 'irritazione', 'brufoli', 'prurito'
-    ]
+    # 1. Execute Hierarchical Keyword Search (Highest Severity First)
+    triggered_flag = None
+    assigned_risk = "LOW"
     
-    # 3. EDUCATION (Usage Confusion)
-    education = [
-        'how to', 'confused', 'order', 'step', 'every day', 'shake',
-        'como usar', 'confundido', 'paso',
-        'come usare', 'confuso'
-    ]
+    for word in TIER_1_CRITICAL:
+        if word in text_lower:
+            assigned_risk = "CRITICAL"
+            triggered_flag = word
+            break  # Strict override: exit loop early once highest severity is hit
+            
+    if assigned_risk == "LOW":
+        for word in TIER_2_HIGH:
+            if word in text_lower:
+                assigned_risk = "HIGH"
+                triggered_flag = word
+                break
+                
+    if assigned_risk == "LOW":
+        for word in TIER_3_MEDIUM:
+            if word in text_lower:
+                assigned_risk = "MEDIUM"
+                triggered_flag = word
+                break
+
+    # 2. Identify "Masked Risk" Gaps (The Glow Bias)
+    # Occurs when a safety risk is detected alongside a high star rating or praise keywords
+    has_praise = any(praise_word in text_lower for praise_word in PRAISE_KEYWORDS)
+    is_high_rating = int(rating) >= 4 if str(rating).isdigit() else False
     
-    # 4. QUALITY (Product/Packaging)
-    quality = [
-        'broken', 'leaked', 'leaking', 'leak', 'leaks', 'empty', 
-        'smell', 'texture', 'harsh', 'amount', 'packaging',
-        'roto', 'vacío', 'olor', 'textura', 'cantidad',
-        'rotto', 'vuoto', 'odore', 'poca'
-    ]
+    is_masked_risk = False
+    if assigned_risk in ["CRITICAL", "HIGH", "MEDIUM"] and (has_praise or is_high_rating):
+        is_masked_risk = True
 
-    # --- BOOLEAN CHECKERS ---
-    has_mask = any(mask in text_clean for mask in masking_keywords)
-    has_medical = any(word in text_clean for word in medical)
-    has_emergency = any(word in text_clean for word in emergency)
-    has_education = any(word in text_clean for word in education)
-    has_quality = any(word in text_clean for word in quality)
+    return {
+        "risk_level": assigned_risk,
+        "triggered_indicator": triggered_flag if triggered_flag else "None",
+        "masked_risk_detected": is_masked_risk,
+        "star_rating": rating
+    }
 
-    # --- HIERARCHICAL LOGIC (Priority Order) ---
-    if has_emergency: 
-        return "🆘 EMERGENCY: High Legal Risk"
-    elif has_mask and has_medical:
-        return "🔴 CRITICAL: Masked Adverse Reaction"
-    elif has_medical: 
-        return "🚨 MEDICAL: Adverse Reaction"
-    elif has_education: 
-        return "📘 EDUCATION: Usage Confusion"
-    elif has_quality:
-        return "⚠️ QUALITY: Retention Risk"
-    else: 
-        return "✅ ROUTINE: Brand Engagement"
+# =====================================================================
+# BATCH PROCESSING PIPELINE
+# =====================================================================
 
-# --- STREAMLIT USER INTERFACE ---
-st.set_page_config(page_title="Skincare Risk Audit Pro", layout="wide", page_icon="🧪")
+def run_risk_gap_analysis(input_csv_path, output_json_path):
+    """
+    Reads unedited product reviews from a CSV file, processes them through
+    the override architecture, and exports a structured validation report.
+    """
+    metrics = {
+        "total_processed": 0,
+        "critical_flags": 0,
+        "high_flags": 0,
+        "medium_flags": 0,
+        "low_flags": 0,
+        "total_masked_risks_hidden": 0
+    }
+    
+    detailed_results = []
 
-# 1. HEADER
-st.title("🧪 Skincare Risk Audit: Enterprise Edition")
-st.markdown("### Automated Safety & Global Compliance Monitoring")
-st.divider()
-
-# 2. MAIN AREA: BULK BRAND AUDIT
-st.header("📊 Bulk Brand Audit")
-st.write("Upload your global review dataset (CSV or Excel) to run the Risk Engine.")
-
-# THE UPLOADER
-uploaded_file = st.file_uploader("Drop files here", type=["csv", "xlsx"])
-
-if uploaded_file is not None:
     try:
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
-        
-        # Standardizing column name to lowercase for checking
-        df.columns = [c.lower() for c in df.columns]
+        with open(input_csv_path, mode='r', encoding='utf-8') as file:
+            reader = csv.DictReader(file)
+            
+            # Verify required columns exist in the source CSV
+            if 'review_text' not in reader.fieldnames or 'rating' not in reader.fieldnames:
+                print("Error: CSV must contain 'review_text' and 'rating' columns.")
+                return
 
-        if 'review' in df.columns:
-            # Apply the engine
-            df['Audit Result'] = df['review'].apply(analyze_review)
-            
-            # --- DASHBOARD METRICS ---
-            st.subheader("Executive Overview")
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Total Reviews", len(df))
-            
-            critical_count = len(df[df['Audit Result'].str.contains('🆘|🔴|🚨')])
-            m2.metric("Safety/Legal Risks", critical_count)
-            
-            edu_count = len(df[df['Audit Result'].str.contains('📘')])
-            m3.metric("Education Gaps", edu_count)
-            
-            quality_count = len(df[df['Audit Result'].str.contains('⚠️')])
-            m4.metric("Quality Flags", quality_count)
+            for row in reader:
+                metrics["total_processed"] += 1
+                analysis = analyze_review_safety(row['review_text'], row['rating'])
+                
+                # Update aggregate metrics
+                if analysis["risk_level"] == "CRITICAL": metrics["critical_flags"] += 1
+                elif analysis["risk_level"] == "HIGH": metrics["high_flags"] += 1
+                elif analysis["risk_level"] == "MEDIUM": metrics["medium_flags"] += 1
+                else: metrics["low_flags"] += 1
+                
+                if analysis["masked_risk_detected"]:
+                    metrics["total_masked_risks_hidden"] += 1
 
-            # --- VISUALIZATION ---
-            st.divider()
-            col_chart, col_data = st.columns([1, 2])
-            
-            with col_chart:
-                st.write("### Risk Distribution")
-                counts = df['Audit Result'].value_counts()
-                st.bar_chart(counts, color="#FF4B4B")
+                # Append detailed breakdown for reporting
+                detailed_results.append({
+                    "raw_text": row['review_text'],
+                    "analysis": analysis
+                })
 
-            with col_data:
-                st.write("### Priority Log")
-                # Styling the dataframe for better visibility
-                st.dataframe(df.sort_values(by='Audit Result', ascending=False), use_container_width=True)
-            
-            # --- EXPORT ---
-            st.divider()
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Download Executive Audit Report",
-                data=csv,
-                file_name='Global_Risk_Audit_Report.csv',
-                mime='text/csv'
+        # Calculate exact percentage gap for the brand report
+        if metrics["total_processed"] > 0:
+            metrics["masked_risk_percentage_gap"] = round(
+                (metrics["total_masked_risks_hidden"] / metrics["total_processed"]) * 100, 2
             )
         else:
-            st.error("Error: The uploaded file must contain a column named 'review'.")
-    except Exception as e:
-        st.error(f"Error processing file: {e}")
+            metrics["masked_risk_percentage_gap"] = 0.0
 
-# 3. SIDEBAR: REAL-TIME SANDBOX TESTING
-st.sidebar.header("🔬 Sandbox Testing")
-st.sidebar.write("Test specific phrases for 'The Glowing Bias' here.")
-single_input = st.sidebar.text_area("Review Text:", placeholder="e.g., My face is glowing but it feels hot and itchy.")
+        # Compile and export final data packet
+        output_data = {
+            "summary_metrics": metrics,
+            "processed_records": detailed_results
+        }
 
-if st.sidebar.button("Analyze Logic"):
-    if single_input:
-        result = analyze_review(single_input)
-        if "🔴" in result or "🆘" in result:
-            st.sidebar.error(f"Analysis: {result}")
-        elif "🚨" in result:
-            st.sidebar.warning(f"Analysis: {result}")
-        elif "✅" in result:
-            st.sidebar.success(f"Analysis: {result}")
-        else:
-            st.sidebar.info(f"Analysis: {result}")
+        with open(output_json_path, 'w', encoding='utf-8') as out_file:
+            json.dump(output_data, out_file, indent=4)
+
+        print(f"Analysis Complete. Processed {metrics['total_processed']} reviews.")
+        print(f"Found {metrics['total_masked_risks_hidden']} masked risks ({metrics['masked_risk_percentage_gap']}% of total data).")
+        print(f"Full report exported successfully to: {output_json_path}")
+
+    except FileNotFoundError:
+        print(f"Error: The file '{input_csv_path}' was not found. Please check your path.")
+
+# =====================================================================
+# LOCAL EXECUTION TEST SCRIPT
+# =====================================================================
+if __name__ == "__main__":
+    # 1. Create a quick local test CSV file to verify the engine pipeline works
+    test_csv = "sample_brand_reviews.csv"
+    with open(test_csv, mode='w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(["review_text", "rating"])
+        writer.writerow(["This serum gave me an amazing glow! But my face is burning and raw skin is peeling off.", "5"])
+        writer.writerow(["Very effective product, reduced my spots completely.", "5"])
+        writer.writerow(["Nice texture, but it triggered an allergic rash and painful bumps on my jawline.", "4"])
+        writer.writerow(["Did not suit my skin, caused a bad breakout.", "2"])
+
+    # 2. Run the processing engine on the test dataset
+    run_risk_gap_analysis(test_csv, "brand_risk_report.json")
