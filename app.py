@@ -2,12 +2,13 @@ import streamlit as st
 import csv
 import json
 import io
+import re
 
 # Set up clean web page configuration
 st.set_page_config(page_title="Hierarchical Risk Engine", page_icon="🛡️", layout="wide")
 
 # =====================================================================
-# DETERMINISTIC CLINICAL LEXICON
+# DETERMINISTIC CLINICAL LEXICON (SYSTEMIC ARRAYS)
 # =====================================================================
 TIER_1_CRITICAL = [
     "stinging", "burning", "burns", "chemical burn", "raw skin", "peeling skin",
@@ -29,66 +30,82 @@ TIER_3_MEDIUM = [
 ]
 
 PRAISE_KEYWORDS = ["glow", "effective", "good", "nice", "love", "radiant", "awesome", "best"]
-
-# Words that negate a medical issue if placed directly in front of it
-NEGATION_WORDS = ["no ", "zero ", "never ", "without ", "didn't ", "did not ", "free of ", "don't have "]
+NEGATION_WORDS = {"no", "zero", "never", "without", "didn't", "dont", "not", "free"}
 
 # =====================================================================
-# ENGINE LOGIC WITH NEGATION HANDLING
+# SYSTEMIC CONTEXT PROCESSING ENGINE
 # =====================================================================
 def analyze_review_safety(review_text, rating):
     text_lower = review_text.lower()
+    
+    # Systemic Fix 1: Split text into clean, individual sentences
+    sentences = re.split(r'[.,!?;\n]', text_lower)
+    
     assigned_risk = "LOW"
     triggered_flag = None
     
-    # --- TIER 1 SEARCH ---
-    for word in TIER_1_CRITICAL:
-        if word in text_lower:
-            # Negation validation check
-            keyword_idx = text_lower.find(word)
-            lookback_str = text_lower[max(0, keyword_idx - 20):keyword_idx]
-            if any(neg in lookback_str for neg in NEGATION_WORDS):
-                continue # Skip keyword, it's negated (e.g., "without stinging")
-                
-            assigned_risk = "CRITICAL"
-            triggered_flag = word
-            break
+    # Process text matching loops
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
             
-    # --- TIER 2 SEARCH ---
-    if assigned_risk == "LOW":
-        for word in TIER_2_HIGH:
-            if word in text_lower:
-                # Negation validation check
-                keyword_idx = text_lower.find(word)
-                lookback_str = text_lower[max(0, keyword_idx - 20):keyword_idx]
-                if any(neg in lookback_str for neg in NEGATION_WORDS):
-                    continue
-                    
-                assigned_risk = "HIGH"
+        # Tokenize sentence into distinct words
+        words = re.findall(r'\b\w+\b', sentence)
+        
+        # Helper function to check for negation words right before the match
+        def is_negated(target_phrase):
+            phrase_words = target_phrase.split()
+            # Find where the phrase starts in our token list
+            for idx in range(len(words) - len(phrase_words) + 1):
+                if words[idx:idx+len(phrase_words)] == phrase_words:
+                    # Look back up to 3 tokens for negation markers
+                    start_lookback = max(0, idx - 3)
+                    for lookback_idx in range(start_lookback, idx):
+                        if words[lookback_idx] in NEGATION_WORDS:
+                            return True
+            return False
+
+        # Tier 1 Assessment
+        for word in TIER_1_CRITICAL:
+            if word in sentence and not is_negated(word):
+                assigned_risk = "CRITICAL"
                 triggered_flag = word
                 break
                 
-    # --- TIER 3 SEARCH ---
-    if assigned_risk == "LOW":
-        for word in TIER_3_MEDIUM:
-            if word in text_lower:
-                # Negation validation check
-                keyword_idx = text_lower.find(word)
-                lookback_str = text_lower[max(0, keyword_idx - 20):keyword_idx]
-                if any(neg in lookback_str for neg in NEGATION_WORDS):
-                    continue
+        # Tier 2 Assessment
+        if assigned_risk == "LOW":
+            for word in TIER_2_HIGH:
+                if word in sentence and not is_negated(word):
+                    assigned_risk = "HIGH"
+                    triggered_flag = word
+                    break
                     
-                assigned_risk = "MEDIUM"
-                triggered_flag = word
-                break
+        # Tier 3 Assessment
+        if assigned_risk == "LOW":
+            for word in TIER_3_MEDIUM:
+                if word in sentence and not is_negated(word):
+                    assigned_risk = "MEDIUM"
+                    triggered_flag = word
+                    break
+                    
+        if assigned_risk != "LOW":
+            break # High priority risk found, break context loops safely
 
-    # Calculate Masked Risks
+    # Systemic Fix 2: Contextual Masking Logic Overhaul
+    rating_val = int(rating) if str(rating).isdigit() else 0
     has_praise = any(praise_word in text_lower for praise_word in PRAISE_KEYWORDS)
-    is_high_rating = int(rating) >= 4 if str(rating).isdigit() else False
     
     is_masked_risk = False
-    if assigned_risk in ["CRITICAL", "HIGH", "MEDIUM"] and (has_praise or is_high_rating):
-        is_masked_risk = True
+    if assigned_risk in ["CRITICAL", "HIGH"]:
+        # Critical/High safety hazards are ALWAYS masked if rating is 3 or higher,
+        # because standard e-commerce pipelines only check 1 and 2 stars for emergencies.
+        if rating_val >= 3 or has_praise:
+            is_masked_risk = True
+    elif assigned_risk == "MEDIUM":
+        # Medium issues follow standard threshold parameters
+        if rating_val >= 4 or has_praise:
+            is_masked_risk = True
 
     return {
         "risk_level": assigned_risk,
@@ -104,23 +121,16 @@ st.title("🛡️ Contextual Risk Surveillance Engine")
 st.subheader("Identifying Masked Safety Risks Hidden in D2C Feedback Pipelines")
 st.write("Upload a raw customer feedback CSV dataset to extract underlying physiological risks and calculate your brand's data gap.")
 
-# 1. File Uploader Component
 uploaded_file = st.file_uploader("Choose a CSV file containing reviews", type=["csv"])
 
 if uploaded_file is not None:
-    # Read the uploaded CSV directly from browser memory
     stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
     reader = csv.DictReader(stringio)
     
     if 'review_text' not in reader.fieldnames or 'rating' not in reader.fieldnames:
         st.error("Error: The uploaded CSV file must contain 'review_text' and 'rating' columns.")
     else:
-        # Initialize processing metrics
         total_processed = 0
-        critical_flags = 0
-        high_flags = 0
-        medium_flags = 0
-        low_flags = 0
         total_masked_risks = 0
         display_rows = []
 
@@ -128,15 +138,9 @@ if uploaded_file is not None:
             total_processed += 1
             analysis = analyze_review_safety(row['review_text'], row['rating'])
             
-            if analysis["risk_level"] == "CRITICAL": critical_flags += 1
-            elif analysis["risk_level"] == "HIGH": high_flags += 1
-            elif analysis["risk_level"] == "MEDIUM": medium_flags += 1
-            else: low_flags += 1
-            
             if analysis["masked_risk_detected"]:
                 total_masked_risks += 1
 
-            # Format rows for visual browser display table
             display_rows.append({
                 "Review Content": row['review_text'],
                 "Star Rating": row['rating'],
@@ -147,7 +151,6 @@ if uploaded_file is not None:
 
         gap_percentage = round((total_masked_risks / total_processed) * 100, 2) if total_processed > 0 else 0.0
 
-        # 2. Display Executive Metrics Grid
         st.markdown("---")
         st.header("📊 Executive Analysis Summary")
         
@@ -159,7 +162,6 @@ if uploaded_file is not None:
         with col3:
             st.metric(label="Data Visibility Gap (Glow Bias)", value=f"{gap_percentage}%")
 
-        # 3. Display Detailed Breakdowns
         st.markdown("---")
         st.header("📋 Detailed Audit Logs")
         st.dataframe(display_rows, use_container_width=True)
