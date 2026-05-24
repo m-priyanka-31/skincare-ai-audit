@@ -1,10 +1,14 @@
+import streamlit as st
 import csv
 import json
+import io
+
+# Set up clean web page configuration
+st.set_page_config(page_title="Hierarchical Risk Engine", page_icon="🛡️", layout="wide")
 
 # =====================================================================
-# DETERMINISTIC CLINICAL LEXICON (TIERED BY SEVERITY)
+# DETERMINISTIC CLINICAL LEXICON
 # =====================================================================
-
 TIER_1_CRITICAL = [
     "stinging", "burning", "burns", "chemical burn", "raw skin", "peeling skin",
     "bleeding", "blisters", "oozing", "pus", "swelling", "inflammation", 
@@ -24,29 +28,21 @@ TIER_3_MEDIUM = [
     "marks", "hyperpigmentation", "dark spots"
 ]
 
-# High-frequency praise terms that typically skew standard NLP tools
 PRAISE_KEYWORDS = ["glow", "effective", "good", "nice", "love", "radiant", "awesome", "best"]
 
 # =====================================================================
-# CORE HIERARCHICAL RISK ENGINE LOGIC
+# ENGINE LOGIC
 # =====================================================================
-
 def analyze_review_safety(review_text, rating):
-    """
-    Parses a review string using a deterministic hierarchical priority override.
-    Detects if marketing praise is masking an underlying physiological safety risk.
-    """
     text_lower = review_text.lower()
-    
-    # 1. Execute Hierarchical Keyword Search (Highest Severity First)
-    triggered_flag = None
     assigned_risk = "LOW"
+    triggered_flag = None
     
     for word in TIER_1_CRITICAL:
         if word in text_lower:
             assigned_risk = "CRITICAL"
             triggered_flag = word
-            break  # Strict override: exit loop early once highest severity is hit
+            break
             
     if assigned_risk == "LOW":
         for word in TIER_2_HIGH:
@@ -62,8 +58,6 @@ def analyze_review_safety(review_text, rating):
                 triggered_flag = word
                 break
 
-    # 2. Identify "Masked Risk" Gaps (The Glow Bias)
-    # Occurs when a safety risk is detected alongside a high star rating or praise keywords
     has_praise = any(praise_word in text_lower for praise_word in PRAISE_KEYWORDS)
     is_high_rating = int(rating) >= 4 if str(rating).isdigit() else False
     
@@ -79,90 +73,68 @@ def analyze_review_safety(review_text, rating):
     }
 
 # =====================================================================
-# BATCH PROCESSING PIPELINE
+# STREAMLIT USER INTERFACE
 # =====================================================================
+st.title("🛡️ Contextual Risk Surveillance Engine")
+st.subheader("Identifying Masked Safety Risks Hidden in D2C Feedback Pipelines")
+st.write("Upload a raw customer feedback CSV dataset to extract underlying physiological risks and calculate your brand's data gap.")
 
-def run_risk_gap_analysis(input_csv_path, output_json_path):
-    """
-    Reads unedited product reviews from a CSV file, processes them through
-    the override architecture, and exports a structured validation report.
-    """
-    metrics = {
-        "total_processed": 0,
-        "critical_flags": 0,
-        "high_flags": 0,
-        "medium_flags": 0,
-        "low_flags": 0,
-        "total_masked_risks_hidden": 0
-    }
+# 1. File Uploader Component
+uploaded_file = st.file_uploader("Choose a CSV file containing reviews", type=["csv"])
+
+if uploaded_file is not None:
+    # Read the uploaded CSV directly from browser memory
+    stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
+    reader = csv.DictReader(stringio)
     
-    detailed_results = []
+    if 'review_text' not in reader.fieldnames or 'rating' not in reader.fieldnames:
+        st.error("Error: The uploaded CSV file must contain 'review_text' and 'rating' columns.")
+    else:
+        # Initialize processing metrics
+        total_processed = 0
+        critical_flags = 0
+        high_flags = 0
+        medium_flags = 0
+        low_flags = 0
+        total_masked_risks = 0
+        display_rows = []
 
-    try:
-        with open(input_csv_path, mode='r', encoding='utf-8') as file:
-            reader = csv.DictReader(file)
+        for row in reader:
+            total_processed += 1
+            analysis = analyze_review_safety(row['review_text'], row['rating'])
             
-            # Verify required columns exist in the source CSV
-            if 'review_text' not in reader.fieldnames or 'rating' not in reader.fieldnames:
-                print("Error: CSV must contain 'review_text' and 'rating' columns.")
-                return
+            if analysis["risk_level"] == "CRITICAL": critical_flags += 1
+            elif analysis["risk_level"] == "HIGH": high_flags += 1
+            elif analysis["risk_level"] == "MEDIUM": medium_flags += 1
+            else: low_flags += 1
+            
+            if analysis["masked_risk_detected"]:
+                total_masked_risks += 1
 
-            for row in reader:
-                metrics["total_processed"] += 1
-                analysis = analyze_review_safety(row['review_text'], row['rating'])
-                
-                # Update aggregate metrics
-                if analysis["risk_level"] == "CRITICAL": metrics["critical_flags"] += 1
-                elif analysis["risk_level"] == "HIGH": metrics["high_flags"] += 1
-                elif analysis["risk_level"] == "MEDIUM": metrics["medium_flags"] += 1
-                else: metrics["low_flags"] += 1
-                
-                if analysis["masked_risk_detected"]:
-                    metrics["total_masked_risks_hidden"] += 1
+            # Format rows for visual browser display table
+            display_rows.append({
+                "Review Content": row['review_text'],
+                "Star Rating": row['rating'],
+                "Assigned Risk Level": analysis["risk_level"],
+                "Triggered Term": analysis["triggered_indicator"],
+                "Masked Risk?": "⚠️ TRUE" if analysis["masked_risk_detected"] else "FALSE"
+            })
 
-                # Append detailed breakdown for reporting
-                detailed_results.append({
-                    "raw_text": row['review_text'],
-                    "analysis": analysis
-                })
+        gap_percentage = round((total_masked_risks / total_processed) * 100, 2) if total_processed > 0 else 0.0
 
-        # Calculate exact percentage gap for the brand report
-        if metrics["total_processed"] > 0:
-            metrics["masked_risk_percentage_gap"] = round(
-                (metrics["total_masked_risks_hidden"] / metrics["total_processed"]) * 100, 2
-            )
-        else:
-            metrics["masked_risk_percentage_gap"] = 0.0
+        # 2. Display Executive Metrics Grid
+        st.markdown("---")
+        st.header("📊 Executive Analysis Summary")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(label="Total Reviews Processed", value=total_processed)
+        with col2:
+            st.metric(label="Masked Risks Uncovered", value=total_masked_risks)
+        with col3:
+            st.metric(label="Data Visibility Gap (Glow Bias)", value=f"{gap_percentage}%")
 
-        # Compile and export final data packet
-        output_data = {
-            "summary_metrics": metrics,
-            "processed_records": detailed_results
-        }
-
-        with open(output_json_path, 'w', encoding='utf-8') as out_file:
-            json.dump(output_data, out_file, indent=4)
-
-        print(f"Analysis Complete. Processed {metrics['total_processed']} reviews.")
-        print(f"Found {metrics['total_masked_risks_hidden']} masked risks ({metrics['masked_risk_percentage_gap']}% of total data).")
-        print(f"Full report exported successfully to: {output_json_path}")
-
-    except FileNotFoundError:
-        print(f"Error: The file '{input_csv_path}' was not found. Please check your path.")
-
-# =====================================================================
-# LOCAL EXECUTION TEST SCRIPT
-# =====================================================================
-if __name__ == "__main__":
-    # 1. Create a quick local test CSV file to verify the engine pipeline works
-    test_csv = "sample_brand_reviews.csv"
-    with open(test_csv, mode='w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(["review_text", "rating"])
-        writer.writerow(["This serum gave me an amazing glow! But my face is burning and raw skin is peeling off.", "5"])
-        writer.writerow(["Very effective product, reduced my spots completely.", "5"])
-        writer.writerow(["Nice texture, but it triggered an allergic rash and painful bumps on my jawline.", "4"])
-        writer.writerow(["Did not suit my skin, caused a bad breakout.", "2"])
-
-    # 2. Run the processing engine on the test dataset
-    run_risk_gap_analysis(test_csv, "brand_risk_report.json")
+        # 3. Display Detailed Breakdowns
+        st.markdown("---")
+        st.header("📋 Detailed Audit Logs")
+        st.dataframe(display_rows, use_container_width=True)
