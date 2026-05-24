@@ -25,7 +25,7 @@ TIER_2_HIGH = [
 TIER_3_MEDIUM = [
     "cystic acne", "nodules", "painful bumps", "pus pimples", "clogged pores", 
     "blackheads", "whiteheads", "severe breakout", "ruined my face", "scarring", 
-    "marks", "hyperpigmentation", "dark spots"
+    "worsened pigment", "caused dark spots", "skin darkened", "left marks"
 ]
 
 PRAISE_KEYWORDS = ["glow", "effective", "good", "nice", "love", "radiant", "awesome", "best"]
