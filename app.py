@@ -1,15 +1,14 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
-import re
+import csv
 import json
 import io
+import re
 
 # Set up clean web page configuration
-st.set_page_config(page_title="Automated Risk Surveillance Engine", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="Hierarchical Risk Engine", page_icon="🛡️", layout="wide")
 
 # =====================================================================
-# DETERMINISTIC CLINICAL LEXICON
+# DETERMINISTIC CLINICAL LEXICON (SYSTEMIC ARRAYS)
 # =====================================================================
 TIER_1_CRITICAL = [
     "stinging", "burning", "burns", "chemical burn", "raw skin", "peeling skin",
@@ -34,52 +33,77 @@ PRAISE_KEYWORDS = ["glow", "effective", "good", "nice", "love", "radiant", "awes
 NEGATION_WORDS = {"no", "zero", "never", "without", "didn't", "dont", "not", "free"}
 
 # =====================================================================
-# SYSTEMIC PROCESSING & NEGATION CORE
+# SYSTEMIC CONTEXT PROCESSING ENGINE
 # =====================================================================
-def analyze_review_safety(review_text, rating=5):
-    """
-    Parses extracted strings using tokenized negation handling.
-    Defaults rating to 5 for text-only scraped streams to evaluate maximum risk masking.
-    """
-    text_cleaned = review_text.lower().replace(",", " ").replace(".", " ")
-    words = text_cleaned.split()
+def analyze_review_safety(review_text, rating):
+    text_lower = review_text.lower()
+    
+    # Systemic Fix: Split text into clean, individual sentences
+    sentences = re.split(r'[.,!?;\n]', text_lower)
     
     assigned_risk = "LOW"
     triggered_flag = None
     
-    def check_if_negated(target_word):
-        if target_word in words:
-            idx = words.index(target_word)
-            lookback_tokens = words[max(0, idx - 2):idx]
-            if any(neg.strip() in lookback_tokens for neg in NEGATION_WORDS):
-                return True
-        return False
-
-    for word in TIER_1_CRITICAL:
-        if word in text_cleaned and not check_if_negated(word):
-            assigned_risk = "CRITICAL"
-            triggered_flag = word
-            break
+    # Process text matching loops
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
             
-    if assigned_risk == "LOW":
-        for word in TIER_2_HIGH:
-            if word in text_cleaned and not check_if_negated(word):
-                assigned_risk = "HIGH"
+        # Tokenize sentence into distinct words
+        words = re.findall(r'\b\w+\b', sentence)
+        
+        # Helper function to check for negation words right before the match
+        def is_negated(target_phrase):
+            phrase_words = target_phrase.split()
+            # Find where the phrase starts in our token list
+            for idx in range(len(words) - len(phrase_words) + 1):
+                if words[idx:idx+len(phrase_words)] == phrase_words:
+                    # Look back up to 3 tokens for negation markers
+                    start_lookback = max(0, idx - 3)
+                    for lookback_idx in range(start_lookback, idx):
+                        if words[lookback_idx] in NEGATION_WORDS:
+                            return True
+            return False
+
+        # Tier 1 Assessment
+        for word in TIER_1_CRITICAL:
+            if word in sentence and not is_negated(word):
+                assigned_risk = "CRITICAL"
                 triggered_flag = word
                 break
                 
-    if assigned_risk == "LOW":
-        for word in TIER_3_MEDIUM:
-            if word in text_cleaned and not check_if_negated(word):
-                assigned_risk = "MEDIUM"
-                triggered_flag = word
-                break
+        # Tier 2 Assessment
+        if assigned_risk == "LOW":
+            for word in TIER_2_HIGH:
+                if word in sentence and not is_negated(word):
+                    assigned_risk = "HIGH"
+                    triggered_flag = word
+                    break
+                    
+        # Tier 3 Assessment
+        if assigned_risk == "LOW":
+            for word in TIER_3_MEDIUM:
+                if word in sentence and not is_negated(word):
+                    assigned_risk = "MEDIUM"
+                    triggered_flag = word
+                    break
+                    
+        if assigned_risk != "LOW":
+            break # High priority risk found, break context loops safely
 
-    has_praise = any(praise_word in text_cleaned for praise_word in PRAISE_KEYWORDS)
+    # Contextual Masking Logic Overhaul
+    rating_val = int(rating) if str(rating).isdigit() else 0
+    has_praise = any(praise_word in text_lower for praise_word in PRAISE_KEYWORDS)
     
     is_masked_risk = False
-    if assigned_risk in ["CRITICAL", "HIGH", "MEDIUM"] and (has_praise or rating >= 4):
-        is_masked_risk = True
+    if assigned_risk in ["CRITICAL", "HIGH"]:
+        # Critical/High safety hazards are ALWAYS masked if rating is 3 or higher
+        if rating_val >= 3 or has_praise:
+            is_masked_risk = True
+    elif assigned_risk == "MEDIUM":
+        if rating_val >= 4 or has_praise:
+            is_masked_risk = True
 
     return {
         "risk_level": assigned_risk,
@@ -89,98 +113,53 @@ def analyze_review_safety(review_text, rating=5):
     }
 
 # =====================================================================
-# AUTOMATED DATA INGESTION LAYER (SCRAPER)
+# STREAMLIT USER INTERFACE
 # =====================================================================
-def extract_reviews_from_url(url):
-    """
-    Simulates enterprise agent headers to bypass standard user-agent checks
-    and isolate raw paragraph blocks containing product feedback.
-    """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9"
-    }
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code != 200:
-            return None, f"HTTP Error Status: {response.status_code}"
-            
-        soup = BeautifulSoup(response.text, "html.parser")
-        
-        # Systemic Extraction: Target common e-commerce review containers, paragraphs, and list items
-        extracted_text_blocks = []
-        for tag in soup.find_all(['p', 'span', 'div']):
-            # Target elements that have user review keywords in their class names or content lengths
-            class_str = "".join(tag.get("class", [])).lower()
-            if "review" in class_str or "comment" in class_str or "text" in class_str:
-                text = tag.get_text().strip()
-                # Filter out menu words, structural buttons, or short clutter strings
-                if len(text) > 25 and len(text) < 500 and not any(skip in text.lower() for skip in ["login", "cart", "checkout", "shipping"]):
-                    if text not in extracted_text_blocks:
-                        extracted_text_blocks.append(text)
-                        
-        # Fallback: if no specific class matches, pull all structured paragraphs
-        if not extracted_text_blocks:
-            extracted_text_blocks = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text().strip()) > 30]
+st.title("🛡️ Contextual Risk Surveillance Engine")
+st.subheader("Identifying Masked Safety Risks Hidden in D2C Feedback Pipelines")
+st.write("Upload a raw customer feedback CSV dataset to extract underlying physiological risks and calculate your brand's data gap.")
 
-        return extracted_text_blocks, None
-    except Exception as e:
-        return None, str(e)
+uploaded_file = st.file_uploader("Choose a CSV file containing reviews", type=["csv"])
 
-# =====================================================================
-# STREAMLIT AUTOMATED INTERFACE
-# =====================================================================
-st.title("🛡️ Automated Risk Surveillance Engine")
-st.subheader("Autonomous Ingestion & Clinical Extraction Pipeline")
-st.write("Input any live public product URL below. The ingestion layer will automatically sandbox raw feedback blocks and route them through the priority-override data validation logic.")
-
-# Input Field replacing the manual file uploader
-target_url = st.text_input("Enter Target Product Webpage URL:", placeholder="https://example-skincare-brand.com/products/vitamin-c-serum")
-
-if st.button("Run Autonomous Audit") and target_url:
-    with st.spinner("Executing extraction agents and isolating text layers..."):
-        raw_strings, error_msg = extract_reviews_from_url(target_url)
-        
-    if error_msg:
-        st.error(f"Ingestion Aborted: {error_msg}")
-        st.info("💡 Note: Highly protected networks (like Amazon) block direct client scripts. Use this field for standalone D2C brand sites, Shopify stores, or public forum endpoints during demos.")
-    elif not raw_strings:
-        st.warning("Ingestion Complete: No viable customer feedback strings could be isolated from the target HTML structure. Verify your URL layout.")
+if uploaded_file is not None:
+    stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
+    reader = csv.DictReader(stringio)
+    
+    if 'review_text' not in reader.fieldnames or 'rating' not in reader.fieldnames:
+        st.error("Error: The uploaded CSV file must contain 'review_text' and 'rating' columns.")
     else:
-        # Process the dynamically scraped data array
         total_processed = 0
         total_masked_risks = 0
         display_rows = []
 
-        for text_block in raw_strings:
+        for row in reader:
             total_processed += 1
-            # Automatically maps text block with placeholder 5-star rating to isolate risk concealment
-            analysis = analyze_review_safety(text_block, rating=5)
+            analysis = analyze_review_safety(row['review_text'], row['rating'])
             
             if analysis["masked_risk_detected"]:
                 total_masked_risks += 1
 
             display_rows.append({
-                "Extracted Text Block": text_block,
+                "Review Content": row['review_text'],
+                "Star Rating": row['rating'],
                 "Assigned Risk Level": analysis["risk_level"],
-                "Triggered Indicator": analysis["triggered_indicator"],
-                "Masked Risk Alert": "⚠️ CRITICAL MASKED RISK" if analysis["risk_level"] in ["CRITICAL", "HIGH"] else ("MEDIUM RISK" if analysis["risk_level"] == "MEDIUM" else "CLEAN/SAFE")
+                "Triggered Term": analysis["triggered_indicator"],
+                "Masked Risk?": "⚠️ TRUE" if analysis["masked_risk_detected"] else "FALSE"
             })
 
         gap_percentage = round((total_masked_risks / total_processed) * 100, 2) if total_processed > 0 else 0.0
 
-        # Executive Statistics Rendering
         st.markdown("---")
-        st.header("📊 Live Risk Audit Summary")
+        st.header("📊 Executive Analysis Summary")
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric(label="Total Text Blocks Isolated", value=total_processed)
+            st.metric(label="Total Reviews Processed", value=total_processed)
         with col2:
-            st.metric(label="Masked Risks Identified", value=total_masked_risks)
+            st.metric(label="Masked Risks Uncovered", value=total_masked_risks)
         with col3:
-            st.metric(label="Data Visibility Gap Metrics", value=f"{gap_percentage}%")
+            st.metric(label="Data Visibility Gap (Glow Bias)", value=f"{gap_percentage}%")
 
         st.markdown("---")
-        st.header("📋 Automated Audit Logs (Real-Time Stream)")
+        st.header("📋 Detailed Audit Logs")
         st.dataframe(display_rows, use_container_width=True)
