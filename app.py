@@ -34,18 +34,28 @@ TIER_3_MEDIUM = [
 PRAISE_KEYWORDS = ["glow", "effective", "good", "nice", "love", "radiant", "awesome", "best"]
 NEGATION_WORDS = {"no", "zero", "never", "without", "didn't", "dont", "not", "free"}
 
+
 # =====================================================================
-# SYSTEMIC CONTEXT PROCESSING ENGINE
+# DETERMINISTIC CLINICAL LEXICON (SYSTEMIC ARRAYS - UPDATED NEGATIONS)
 # =====================================================================
+# Ensure base contractions are caught even if punctuation is stripped
+NEGATION_WORDS = {
+    "no", "zero", "never", "without", "not", "free", 
+    "dont", "doesnt", "didnt", "doesn", "dont", "didn", "never"
+}
+
 def analyze_review_safety(review_text, rating):
     text_lower = str(review_text).lower()
     
-    # FIX 1: Normalize common D2C conversational contractions before processing
+    # FIX 1: Normalize curly/smart apostrophes to standard straight ones
+    text_lower = text_lower.replace("’", "'").replace("`", "'")
+    
+    # FIX 2: Expand expansion matrix for all variations
     text_lower = text_lower.replace("doesn't", "does not")
     text_lower = text_lower.replace("don't", "do not")
     text_lower = text_lower.replace("didn't", "did not")
-    text_lower = text_lower.replace("dont", "not")
-    text_lower = text_lower.replace("doesnt", "not")
+    text_lower = text_lower.replace("doesn ", "not ")
+    text_lower = text_lower.replace("dont ", "not ")
     
     sentences = re.split(r'[.,!?;\n]', text_lower)
     
@@ -63,7 +73,6 @@ def analyze_review_safety(review_text, rating):
             phrase_words = target_phrase.split()
             for idx in range(len(words) - len(phrase_words) + 1):
                 if words[idx:idx+len(phrase_words)] == phrase_words:
-                    # FIX 2: Expand lookback window to 5 words to catch descriptive variations
                     start_lookback = max(0, idx - 5)
                     for lookback_idx in range(start_lookback, idx):
                         if words[lookback_idx] in NEGATION_WORDS:
