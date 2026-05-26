@@ -1,5 +1,5 @@
 import streamlit as st
-import csv
+import pandas as pd
 import json
 import io
 import re
@@ -36,9 +36,9 @@ NEGATION_WORDS = {"no", "zero", "never", "without", "didn't", "dont", "not", "fr
 # SYSTEMIC CONTEXT PROCESSING ENGINE
 # =====================================================================
 def analyze_review_safety(review_text, rating):
-    text_lower = review_text.lower()
+    text_lower = str(review_text).lower()
     
-    # Systemic Fix: Split text into clean, individual sentences
+    # Split text into clean, individual sentences
     sentences = re.split(r'[.,!?;\n]', text_lower)
     
     assigned_risk = "LOW"
@@ -56,10 +56,8 @@ def analyze_review_safety(review_text, rating):
         # Helper function to check for negation words right before the match
         def is_negated(target_phrase):
             phrase_words = target_phrase.split()
-            # Find where the phrase starts in our token list
             for idx in range(len(words) - len(phrase_words) + 1):
                 if words[idx:idx+len(phrase_words)] == phrase_words:
-                    # Look back up to 3 tokens for negation markers
                     start_lookback = max(0, idx - 3)
                     for lookback_idx in range(start_lookback, idx):
                         if words[lookback_idx] in NEGATION_WORDS:
@@ -93,12 +91,12 @@ def analyze_review_safety(review_text, rating):
             break # High priority risk found, break context loops safely
 
     # Contextual Masking Logic Overhaul
-    rating_val = int(rating) if str(rating).isdigit() else 0
+    cleaned_rating = str(rating).strip().split('.')[0] # Clean float strings like "3.0"
+    rating_val = int(cleaned_rating) if cleaned_rating.isdigit() else 0
     has_praise = any(praise_word in text_lower for praise_word in PRAISE_KEYWORDS)
     
     is_masked_risk = False
     if assigned_risk in ["CRITICAL", "HIGH"]:
-        # Critical/High safety hazards are ALWAYS masked if rating is 3 or higher
         if rating_val >= 3 or has_praise:
             is_masked_risk = True
     elif assigned_risk == "MEDIUM":
@@ -122,44 +120,58 @@ st.write("Upload a raw customer feedback CSV dataset to extract underlying physi
 uploaded_file = st.file_uploader("Choose a CSV file containing reviews", type=["csv"])
 
 if uploaded_file is not None:
-    stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
-    reader = csv.DictReader(stringio)
-    
-    if 'review_text' not in reader.fieldnames or 'rating' not in reader.fieldnames:
-        st.error("Error: The uploaded CSV file must contain 'review_text' and 'rating' columns.")
-    else:
-        total_processed = 0
-        total_masked_risks = 0
-        display_rows = []
-
-        for row in reader:
-            total_processed += 1
-            analysis = analyze_review_safety(row['review_text'], row['rating'])
-            
-            if analysis["masked_risk_detected"]:
-                total_masked_risks += 1
-
-            display_rows.append({
-                "Review Content": row['review_text'],
-                "Star Rating": row['rating'],
-                "Assigned Risk Level": analysis["risk_level"],
-                "Triggered Term": analysis["triggered_indicator"],
-                "Masked Risk?": "⚠️ TRUE" if analysis["masked_risk_detected"] else "FALSE"
-            })
-
-        gap_percentage = round((total_masked_risks / total_processed) * 100, 2) if total_processed > 0 else 0.0
-
-        st.markdown("---")
-        st.header("📊 Executive Analysis Summary")
+    try:
+        # Use pandas to handle messy or corrupted e-commerce CSV lines flawlessly
+        df = pd.read_csv(uploaded_file)
         
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(label="Total Reviews Processed", value=total_processed)
-        with col2:
-            st.metric(label="Masked Risks Uncovered", value=total_masked_risks)
-        with col3:
-            st.metric(label="Data Visibility Gap (Glow Bias)", value=f"{gap_percentage}%")
+        # Systemic Fix: Automatically clean whitespace and ignore uppercase header errors
+        df.columns = [str(col).strip().lower() for col in df.columns]
+        
+        if 'review_text' not in df.columns or 'rating' not in df.columns:
+            st.error(f"Error: The uploaded CSV file must contain 'review_text' and 'rating' columns. Found columns: {df.columns.tolist()}")
+        else:
+            total_processed = 0
+            total_masked_risks = 0
+            display_rows = []
 
-        st.markdown("---")
-        st.header("📋 Detailed Audit Logs")
-        st.dataframe(display_rows, use_container_width=True)
+            # Iterate through the rows safely converting raw types to strings
+            for index, row in df.iterrows():
+                review_content = str(row['review_text']).strip()
+                star_rating = str(row['rating']).strip()
+                
+                if not review_content or review_content.lower() == 'nan':
+                    continue # Skip empty rows cleanly
+                    
+                total_processed += 1
+                analysis = analyze_review_safety(review_content, star_rating)
+                
+                if analysis["masked_risk_detected"]:
+                    total_masked_risks += 1
+
+                display_rows.append({
+                    "Review Content": review_content,
+                    "Star Rating": star_rating,
+                    "Assigned Risk Level": analysis["risk_level"],
+                    "Triggered Term": analysis["triggered_indicator"],
+                    "Masked Risk?": "⚠️ TRUE" if analysis["masked_risk_detected"] else "FALSE"
+                })
+
+            gap_percentage = round((total_masked_risks / total_processed) * 100, 2) if total_processed > 0 else 0.0
+
+            st.markdown("---")
+            st.header("📊 Executive Analysis Summary")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(label="Total Reviews Processed", value=total_processed)
+            with col2:
+                st.metric(label="Masked Risks Uncovered", value=total_masked_risks)
+            with col3:
+                st.metric(label="Data Visibility Gap (Glow Bias)", value=f"{gap_percentage}%")
+
+            st.markdown("---")
+            st.header("📋 Detailed Audit Logs")
+            st.dataframe(display_rows, use_container_width=True)
+            
+    except Exception as e:
+        st.error(f"An unexpected data parsing error occurred: {str(e)}")
