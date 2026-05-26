@@ -92,17 +92,16 @@ def analyze_review_safety(review_text, rating):
         if assigned_risk != "LOW":
             break # High priority risk found, break context loops safely
 
+    
     # Contextual Masking Logic Overhaul
     cleaned_rating = str(rating).strip().split('.')[0] # Clean float strings like "3.0"
     rating_val = int(cleaned_rating) if cleaned_rating.isdigit() else 0
     has_praise = any(praise_word in text_lower for praise_word in PRAISE_KEYWORDS)
     
     is_masked_risk = False
-    if assigned_risk in ["CRITICAL", "HIGH"]:
+    # If ANY risk level is found in a 3, 4, or 5-star review, it's an uncovered blind spot
+    if assigned_risk in ["CRITICAL", "HIGH", "MEDIUM"]:
         if rating_val >= 3 or has_praise:
-            is_masked_risk = True
-    elif assigned_risk == "MEDIUM":
-        if rating_val >= 4 or has_praise:
             is_masked_risk = True
 
     return {
